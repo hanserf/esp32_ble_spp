@@ -5,6 +5,7 @@
             "includePath": [
                 "${workspaceFolder}/main/**",
                 "${workspaceFolder}/build/**",
+                "${MY_IDF_PATH}/components/**"
             ],
             "defines": [],
             "compilerPath": "/usr/bin/gcc",

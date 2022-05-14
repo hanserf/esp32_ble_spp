@@ -77,6 +77,13 @@
         "protocol_examples_common.h": "c",
         "ble_spp_server.h": "c",
         "bsp.h": "c",
-        "i2s.h": "c"
+        "i2s.h": "c",
+        "esp_vfs_dev.h": "c",
+        "uart.h": "c",
+        "esp_system.h": "c",
+        "console_ll.h": "c"
     }
+    "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: LLVM, UseTab: Never, IndentWidth: 4, TabWidth: 4, BreakBeforeBraces: Attach, AllowShortIfStatementsOnASingleLine: true, IndentCaseLabels: false, ColumnLimit: 0, AccessModifierOffset: -4 }",
+    "editor.formatOnSave": true,
+    "cmake.configureOnOpen": true,
 }
