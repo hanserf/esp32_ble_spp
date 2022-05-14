@@ -6,10 +6,11 @@
    CONDITIONS OF ANY KIND, either express or implied.
 */
 #pragma once
+#include "bsp.h"
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 /*
  * DEFINES
  ****************************************************************************************
@@ -49,4 +50,10 @@ enum {
     SPP_IDX_NB,
 };
 
+typedef void (*ble_spp_write_fun_t)(const char *src, size_t size);
+typedef void (*ble_spp_read_fun_t)(uint8_t *buf, uint32_t length, TickType_t timeout);
+typedef size_t (*ble_spp_get_txlen_t)(void);
+
 void setup_ble_spp();
+void register_rw_callbacks(ble_spp_write_fun_t tx_cb, ble_spp_read_fun_t rx_cb);
+void register_get_uplink_len_callback(ble_spp_get_txlen_t sizeofbuf_cb);
