@@ -1,13 +1,17 @@
 /*
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
+   This is an example of a ble transparent link wich may be connected to any interface.
+   It is based on the ble_spp bluedroid example from ESP-IDF.
+   USART Driver is replaced by console_ll.
+   Modularity is acheieved by using function pointers to console_ll queue buffers.
+   */
 
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
-
-#include "driver/uart.h"
+#include "ble_spp_server.h"
+#include "bsp.h"
 #include "esp_bt.h"
+#include "esp_bt_defs.h"
+#include "esp_bt_main.h"
+#include "esp_gap_ble_api.h"
+#include "esp_gatts_api.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
@@ -16,20 +20,14 @@
 #include "nvs_flash.h"
 #include "string.h"
 
-#include "ble_spp_server.h"
-#include "esp_bt_defs.h"
-#include "esp_bt_main.h"
-#include "esp_gap_ble_api.h"
-#include "esp_gatts_api.h"
-
 #define GATTS_TABLE_TAG "GATTS_SPP_DEMO"
-
+#define BLE_SPP_DBG DEBUG_CONSOLE_INTERFACE
 #define SPP_PROFILE_NUM 1
 #define SPP_PROFILE_APP_IDX 0
 #define ESP_SPP_APP_ID 0x56
 #define SAMPLE_DEVICE_NAME "ESP_SPP_SERVER"
 #define SPP_SVC_INST_ID 0
-
+#define UPLINK_BUFSIZE 512
 /// SPP Service
 static const uint16_t spp_service_uuid = 0xABF0;
 /// Characteristic UUID
@@ -50,8 +48,13 @@ static const uint8_t spp_adv_data[23] = {
 static uint16_t spp_mtu_size = 23;
 static uint16_t spp_conn_id = 0xffff;
 static esp_gatt_if_t spp_gatts_if = 0xff;
-QueueHandle_t spp_uart_queue = NULL;
 static xQueueHandle cmd_cmd_queue = NULL;
+/* Added by me to integrate with interface functionally */
+static ble_spp_read_fun_t __my_read_cb = NULL;
+static ble_spp_write_fun_t __my_write_cb = NULL;
+static ble_spp_get_txlen_t __my_get_uplink_len_cb = NULL;
+SemaphoreHandle_t __enable_tx_sem;
+static void __release_ble_uplink();
 
 #ifdef SUPPORT_HEARTBEAT
 static xQueueHandle cmd_heartbeat_queue = NULL;
@@ -283,55 +286,59 @@ static void print_write_buffer(void) {
     temp_spp_recv_data_node_p1 = SppRecvDataBuff.first_node;
 
     while (temp_spp_recv_data_node_p1 != NULL) {
-        uart_write_bytes(UART_NUM_0, (char *)(temp_spp_recv_data_node_p1->node_buff), temp_spp_recv_data_node_p1->len);
+        if (NULL != __my_write_cb) {
+            __my_write_cb((char *)(temp_spp_recv_data_node_p1->node_buff), (size_t)temp_spp_recv_data_node_p1->len);
+        }
         temp_spp_recv_data_node_p1 = temp_spp_recv_data_node_p1->next_node;
     }
 }
 
-void uart_task(void *pvParameters) {
-    uart_event_t event;
+void link_task(void *pvParameters) {
+
+    size_t linesize;
     uint8_t total_num = 0;
     uint8_t current_num = 0;
+    uint8_t temp[UPLINK_BUFSIZE];
 
     for (;;) {
         //Waiting for UART event.
-        if (xQueueReceive(spp_uart_queue, (void *)&event, (portTickType)portMAX_DELAY)) {
-            switch (event.type) {
-            //Event of UART receving data
-            case UART_DATA:
-                if ((event.size) && (is_connected)) {
-                    uint8_t *temp = NULL;
-                    uint8_t *ntf_value_p = NULL;
-#ifdef SUPPORT_HEARTBEAT
-                    if (!enable_heart_ntf) {
-                        ESP_LOGE(GATTS_TABLE_TAG, "%s do not enable heartbeat Notify\n", __func__);
-                        break;
-                    }
+        if (xSemaphoreTake(__enable_tx_sem, portMAX_DELAY) == pdPASS) {
+            if (is_connected) {
+                memset(temp, 0, UPLINK_BUFSIZE);
+                linesize = (__my_get_uplink_len_cb != NULL) ? (__my_get_uplink_len_cb()) : 0;
+#if (BLE_SPP_DBG == 1)
+                ESP_LOGI(GATTS_TABLE_TAG, "Linesize :%d", linesize);
 #endif
-                    if (!enable_data_ntf) {
-                        ESP_LOGE(GATTS_TABLE_TAG, "%s do not enable data Notify\n", __func__);
-                        break;
+                uint8_t *ntf_value_p = NULL;
+#ifdef SUPPORT_HEARTBEAT
+                if (!enable_heart_ntf) {
+                    ESP_LOGE(GATTS_TABLE_TAG, "%s do not enable heartbeat Notify\n", __func__);
+                    break;
+                }
+#endif
+                if (!enable_data_ntf) {
+                    ESP_LOGE(GATTS_TABLE_TAG, "%s do not enable data Notify\n", __func__);
+                    break;
+                }
+                if (linesize > 0 && linesize < UPLINK_BUFSIZE) {
+                    if (NULL != __my_read_cb) {
+                        __my_read_cb(temp, linesize, portMAX_DELAY);
+#if (BLE_SPP_DBG == 1)
+                        ESP_LOGI(GATTS_TABLE_TAG, "TX :%s", temp);
+#endif
                     }
-                    temp = (uint8_t *)malloc(sizeof(uint8_t) * event.size);
-                    if (temp == NULL) {
-                        ESP_LOGE(GATTS_TABLE_TAG, "%s malloc.1 failed\n", __func__);
-                        break;
-                    }
-                    memset(temp, 0x0, event.size);
-                    uart_read_bytes(UART_NUM_0, temp, event.size, portMAX_DELAY);
-                    if (event.size <= (spp_mtu_size - 3)) {
-                        esp_ble_gatts_send_indicate(spp_gatts_if, spp_conn_id, spp_handle_table[SPP_IDX_SPP_DATA_NTY_VAL], event.size, temp, false);
-                    } else if (event.size > (spp_mtu_size - 3)) {
-                        if ((event.size % (spp_mtu_size - 7)) == 0) {
-                            total_num = event.size / (spp_mtu_size - 7);
+                    if (linesize <= (spp_mtu_size - 3)) {
+                        esp_ble_gatts_send_indicate(spp_gatts_if, spp_conn_id, spp_handle_table[SPP_IDX_SPP_DATA_NTY_VAL], linesize, temp, false);
+                    } else if (linesize > (spp_mtu_size - 3)) {
+                        if ((linesize % (spp_mtu_size - 7)) == 0) {
+                            total_num = linesize / (spp_mtu_size - 7);
                         } else {
-                            total_num = event.size / (spp_mtu_size - 7) + 1;
+                            total_num = linesize / (spp_mtu_size - 7) + 1;
                         }
                         current_num = 1;
                         ntf_value_p = (uint8_t *)malloc((spp_mtu_size - 3) * sizeof(uint8_t));
                         if (ntf_value_p == NULL) {
                             ESP_LOGE(GATTS_TABLE_TAG, "%s malloc.2 failed\n", __func__);
-                            free(temp);
                             break;
                         }
                         while (current_num <= total_num) {
@@ -347,42 +354,20 @@ void uart_task(void *pvParameters) {
                                 ntf_value_p[1] = '#';
                                 ntf_value_p[2] = total_num;
                                 ntf_value_p[3] = current_num;
-                                memcpy(ntf_value_p + 4, temp + (current_num - 1) * (spp_mtu_size - 7), (event.size - (current_num - 1) * (spp_mtu_size - 7)));
-                                esp_ble_gatts_send_indicate(spp_gatts_if, spp_conn_id, spp_handle_table[SPP_IDX_SPP_DATA_NTY_VAL], (event.size - (current_num - 1) * (spp_mtu_size - 7) + 4), ntf_value_p, false);
+                                memcpy(ntf_value_p + 4, temp + (current_num - 1) * (spp_mtu_size - 7), (linesize - (current_num - 1) * (spp_mtu_size - 7)));
+                                esp_ble_gatts_send_indicate(spp_gatts_if, spp_conn_id, spp_handle_table[SPP_IDX_SPP_DATA_NTY_VAL], (linesize - (current_num - 1) * (spp_mtu_size - 7) + 4), ntf_value_p, false);
                             }
                             vTaskDelay(20 / portTICK_PERIOD_MS);
                             current_num++;
                         }
                         free(ntf_value_p);
                     }
-                    free(temp);
                 }
-                break;
-            default:
-                break;
             }
         }
     }
+    ESP_LOGW(GATTS_TABLE_TAG, "Killing BT link task");
     vTaskDelete(NULL);
-}
-
-static void spp_uart_init(void) {
-    uart_config_t uart_config = {
-        .baud_rate = 115200,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_RTS,
-        .rx_flow_ctrl_thresh = 122,
-    };
-
-    //Set UART parameters
-    uart_param_config(UART_NUM_0, &uart_config);
-    //Set UART pins
-    uart_set_pin(UART_NUM_0, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    //Install UART driver, and get the queue.
-    uart_driver_install(UART_NUM_0, 4096, 8192, 10, &spp_uart_queue, 0);
-    xTaskCreate(uart_task, "uTask", 2048, (void *)UART_NUM_0, 8, NULL);
 }
 
 #ifdef SUPPORT_HEARTBEAT
@@ -424,7 +409,7 @@ void spp_cmd_task(void *arg) {
 }
 
 static void spp_task_init(void) {
-    spp_uart_init();
+    xTaskCreate(link_task, "linkTask", 4096, NULL, 8, NULL);
 
 #ifdef SUPPORT_HEARTBEAT
     cmd_heartbeat_queue = xQueueCreate(10, sizeof(uint32_t));
@@ -457,8 +442,9 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t *param) {
     esp_ble_gatts_cb_param_t *p_data = (esp_ble_gatts_cb_param_t *)param;
     uint8_t res = 0xff;
-
+#if (BLE_SPP_DBG == 1)
     ESP_LOGI(GATTS_TABLE_TAG, "event = %x\n", event);
+#endif
     switch (event) {
     case ESP_GATTS_REG_EVT:
         ESP_LOGI(GATTS_TABLE_TAG, "%s %d\n", __func__, __LINE__);
@@ -479,7 +465,9 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
     case ESP_GATTS_WRITE_EVT: {
         res = find_char_and_desr_index(p_data->write.handle);
         if (p_data->write.is_prep == false) {
+#if (BLE_SPP_DBG == 1)
             ESP_LOGI(GATTS_TABLE_TAG, "ESP_GATTS_WRITE_EVT : handle = %d\n", res);
+#endif
             if (res == SPP_IDX_SPP_COMMAND_VAL) {
                 uint8_t *spp_cmd_buff = NULL;
                 spp_cmd_buff = (uint8_t *)malloc((spp_mtu_size - 3) * sizeof(uint8_t));
@@ -514,13 +502,22 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 #ifdef SPP_DEBUG_MODE
                 esp_log_buffer_char(GATTS_TABLE_TAG, (char *)(p_data->write.value), p_data->write.len);
 #else
-                uart_write_bytes(UART_NUM_0, (char *)(p_data->write.value), p_data->write.len);
+                if (NULL != __my_write_cb) {
+                    __my_write_cb((char *)(p_data->write.value), (size_t)p_data->write.len);
+/*My write cb will append termination character after newline*/
+#if (BLE_SPP_DBG == 1)
+                    ESP_LOGI(GATTS_TABLE_TAG, "spp len %d:%s", p_data->write.len, p_data->write.value);
+#endif
+                }
 #endif
             } else {
                 //TODO:
             }
         } else if ((p_data->write.is_prep == true) && (res == SPP_IDX_SPP_DATA_RECV_VAL)) {
+#if (BLE_SPP_DBG == 1)
+
             ESP_LOGI(GATTS_TABLE_TAG, "ESP_GATTS_PREP_WRITE_EVT : handle = %d\n", res);
+#endif
             store_wr_buffer(p_data);
         }
         break;
@@ -593,8 +590,9 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
 }
 
 static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t *param) {
+#if (BLE_SPP_DBG == 1)
     ESP_LOGI(GATTS_TABLE_TAG, "EVT %d, gatts if %d\n", event, gatts_if);
-
+#endif
     /* If event is register event, store the gatts_if for each profile */
     if (event == ESP_GATTS_REG_EVT) {
         if (param->reg.status == ESP_GATT_OK) {
@@ -617,9 +615,14 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
         }
     } while (0);
 }
-
-void setup_ble_spp() {
+/*This functions returns a pointer to a static function declared within this source file
+  the static function relases the uplink. This function will act as a "Flow control" Releasing transmission of current uplink buffer.
+  It will here be used when detecting a tx escape character. 
+*/
+ble_spp_relase_uplink_t setup_ble_spp() {
     esp_err_t ret;
+    __enable_tx_sem = xSemaphoreCreateBinary();
+    MY_ASSERT_NOT(__enable_tx_sem, NULL);
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
 
     // Initialize NVS
@@ -635,25 +638,25 @@ void setup_ble_spp() {
     ret = esp_bt_controller_init(&bt_cfg);
     if (ret) {
         ESP_LOGE(GATTS_TABLE_TAG, "%s enable controller failed: %s\n", __func__, esp_err_to_name(ret));
-        return;
+        return SPP_ERROR_INIT;
     }
 
     ret = esp_bt_controller_enable(ESP_BT_MODE_BLE);
     if (ret) {
         ESP_LOGE(GATTS_TABLE_TAG, "%s enable controller failed: %s\n", __func__, esp_err_to_name(ret));
-        return;
+        return SPP_ERROR_INIT;
     }
 
     ESP_LOGI(GATTS_TABLE_TAG, "%s init bluetooth\n", __func__);
     ret = esp_bluedroid_init();
     if (ret) {
         ESP_LOGE(GATTS_TABLE_TAG, "%s init bluetooth failed: %s\n", __func__, esp_err_to_name(ret));
-        return;
+        return SPP_ERROR_INIT;
     }
     ret = esp_bluedroid_enable();
     if (ret) {
         ESP_LOGE(GATTS_TABLE_TAG, "%s enable bluetooth failed: %s\n", __func__, esp_err_to_name(ret));
-        return;
+        return SPP_ERROR_INIT;
     }
 
     esp_ble_gatts_register_callback(gatts_event_handler);
@@ -662,5 +665,22 @@ void setup_ble_spp() {
 
     spp_task_init();
 
-    return;
+    return __release_ble_uplink;
+}
+
+void register_rw_callbacks(ble_spp_write_fun_t tx_cb, ble_spp_read_fun_t rx_cb) {
+    if (NULL != tx_cb) {
+        __my_write_cb = tx_cb;
+    }
+    if (NULL != rx_cb) {
+        __my_read_cb = rx_cb;
+    }
+}
+void register_get_uplink_len_callback(ble_spp_get_txlen_t sizeofbuf_cb) {
+    MY_ASSERT_NOT(sizeofbuf_cb, NULL);
+    __my_get_uplink_len_cb = sizeofbuf_cb;
+}
+
+static void __release_ble_uplink() {
+    MY_ASSERT_EQ(xSemaphoreGive(__enable_tx_sem), pdPASS);
 }
