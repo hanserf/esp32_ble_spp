@@ -20,16 +20,19 @@ These functions can be used as redefined stdin and stdout FD for socket/vfs task
 static const char *TAG = "console_ll";
 // static console_ll_t uart_control_struct;
 bool running = false;
-QueueHandle_t rx_queue;
-QueueHandle_t tx_queue;
+static QueueHandle_t rx_queue;
+static QueueHandle_t tx_queue;
+static size_t read_size = 0;
+static SemaphoreHandle_t new_line_sem;
 
 static void __link_rx(const char *src, size_t size);
 static void __link_tx(uint8_t *buf, uint32_t length, TickType_t ticks_to_wait);
 static size_t __get_tx_queue_len();
 static size_t __get_rx_queue_len();
 static ble_spp_relase_uplink_t enable_tx_cb;
-static ble_spp_new_downlink_t signal_newline_callback;
-void console_ll_init(ble_spp_new_downlink_t signal_newline_cb) {
+static void __release_sem(size_t num_elements);
+
+void console_ll_init() {
     if (NULL == rx_queue) {
         rx_queue = xQueueCreate(CONSOLE_PRINT_SIZE, sizeof(char));
     }
@@ -43,8 +46,8 @@ void console_ll_init(ble_spp_new_downlink_t signal_newline_cb) {
         register_get_uplink_len_callback(__get_tx_queue_len);
         enable_tx_cb = setup_ble_spp();
         MY_ASSERT_NOT(enable_tx_cb, NULL);
-        MY_ASSERT_NOT(signal_newline_cb, NULL);
-        signal_newline_callback = signal_newline_cb;
+        new_line_sem = xSemaphoreCreateBinary();
+        read_size = 0;
         ESP_LOGI(TAG, "Console_ll initialized");
         running = true;
     }
@@ -96,12 +99,10 @@ static void __link_rx(const char *src, size_t size) {
             tmp = src[i];
             MY_ASSERT_EQ(xQueueGenericSend(rx_queue, &tmp, 0, queueSEND_TO_BACK), pdPASS);
         }
-        //tmp = '\0';
-        //MY_ASSERT_EQ(xQueueGenericSend(rx_queue, &tmp, 0, queueSEND_TO_BACK), pdPASS);
 #if (CONSOLE_LL_DBG == 1)
         ESP_LOGI(TAG, "New data %s", src);
 #endif
-        signal_newline_callback(size);
+        __release_sem(size);
     }
 }
 static void __link_tx(uint8_t *buf, uint32_t length, TickType_t ticks_to_wait) {
@@ -122,4 +123,33 @@ static size_t __get_tx_queue_len() {
 }
 static size_t __get_rx_queue_len() {
     return (size_t)uxQueueMessagesWaiting(rx_queue);
+}
+int console_ll_getline(char *data, size_t size) {
+    int ret = -1;
+    if (pdPASS == xSemaphoreTake(new_line_sem, portMAX_DELAY)) {
+        ESP_ERROR_CHECK((read_size < CONSOLE_PRINT_SIZE) ? ESP_OK : ESP_FAIL);
+#if (CONSOLE_LL_DBG == 1)
+        ESP_LOGI(TAG, "Processing new line");
+#endif
+        for (int i = 0; i < read_size; i++) {
+            data[i] = console_ll_getc(true);
+        }
+    }
+    ret = read_size;
+    read_size = 0;
+    return ret;
+}
+int console_ll_putline(char *data, size_t size) {
+    for (int i = 0; i < size; i++) {
+        console_ll_putc(data[i]);
+    }
+    return size;
+}
+
+static void __release_sem(size_t num_elements) {
+#if (CONSOLE_LL_DBG == 1)
+    ESP_LOGI(TAG, "newline");
+#endif
+    read_size = num_elements;
+    MY_ASSERT_EQ(xSemaphoreGive(new_line_sem), pdPASS);
 }
