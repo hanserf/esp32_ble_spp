@@ -50,10 +50,14 @@ enum {
     SPP_IDX_NB,
 };
 
+#define SPP_ERROR_INIT (NULL)
 typedef void (*ble_spp_write_fun_t)(const char *src, size_t size);
 typedef void (*ble_spp_read_fun_t)(uint8_t *buf, uint32_t length, TickType_t timeout);
+typedef void (*ble_spp_relase_uplink_t)();
+typedef void (*ble_spp_new_downlink_t)(size_t num_elements);
+
 typedef size_t (*ble_spp_get_txlen_t)(void);
 
-void setup_ble_spp();
+ble_spp_relase_uplink_t setup_ble_spp();
 void register_rw_callbacks(ble_spp_write_fun_t tx_cb, ble_spp_read_fun_t rx_cb);
 void register_get_uplink_len_callback(ble_spp_get_txlen_t sizeofbuf_cb);
