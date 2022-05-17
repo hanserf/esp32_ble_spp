@@ -7,6 +7,7 @@ These functions can be used as redefined stdin and stdout FD for socket/vfs task
 #include "console_ll.h"
 #include "ble_spp_server.h"
 #include "bsp.h"
+#include "shell_driver.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <sys/errno.h>
@@ -46,9 +47,10 @@ void console_ll_init() {
         register_get_uplink_len_callback(__get_tx_queue_len);
         enable_tx_cb = setup_ble_spp();
         MY_ASSERT_NOT(enable_tx_cb, NULL);
-        new_line_sem = xSemaphoreCreateBinary();
+        new_line_sem = xSemaphoreCreateCounting(5, 0);
         read_size = 0;
         ESP_LOGI(TAG, "Console_ll initialized");
+        xTaskCreate(shell_driver_task, "shell_creator", 1024, NULL, 2, NULL);
         running = true;
     }
 }
@@ -66,12 +68,7 @@ char console_ll_getc(bool block) {
 
 void console_ll_putc(char c) {
     MY_ASSERT_EQ(xQueueGenericSend(tx_queue, &c, 0, queueSEND_TO_BACK), pdPASS);
-    if (CONSOLE_LL_NEWLINE == c) {
-#if (CONSOLE_LL_DBG == 1)
-        ESP_LOGI(TAG, "Relasing TX");
-#endif
-        enable_tx_cb();
-    }
+    enable_tx_cb();
 }
 
 void console_printf(const char *str, ...) {
@@ -86,6 +83,7 @@ void console_printf(const char *str, ...) {
         for (int i = 0; i < rc; i++) {
             console_ll_putc(buf[i]);
         }
+        enable_tx_cb();
     }
 }
 
@@ -139,10 +137,13 @@ int console_ll_getline(char *data, size_t size) {
     read_size = 0;
     return ret;
 }
-int console_ll_putline(char *data, size_t size) {
+int console_ll_putline(const char *data, size_t size) {
+    char tmp = 0;
     for (int i = 0; i < size; i++) {
-        console_ll_putc(data[i]);
+        tmp = data[i];
+        MY_ASSERT_EQ(xQueueGenericSend(tx_queue, &tmp, 0, queueSEND_TO_BACK), pdPASS);
     }
+    enable_tx_cb();
     return size;
 }
 

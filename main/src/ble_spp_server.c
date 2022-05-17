@@ -302,7 +302,7 @@ void link_task(void *pvParameters) {
 
     for (;;) {
         //Waiting for UART event.
-        if (xSemaphoreTake(__enable_tx_sem, portMAX_DELAY) == pdPASS) {
+        if ((xSemaphoreTake(__enable_tx_sem, portMAX_DELAY) == pdPASS) && enable_data_ntf) {
             if (is_connected) {
                 memset(temp, 0, UPLINK_BUFSIZE);
                 linesize = (__my_get_uplink_len_cb != NULL) ? (__my_get_uplink_len_cb()) : 0;
@@ -316,10 +316,7 @@ void link_task(void *pvParameters) {
                     break;
                 }
 #endif
-                if (!enable_data_ntf) {
-                    ESP_LOGE(GATTS_TABLE_TAG, "%s do not enable data Notify\n", __func__);
-                    break;
-                }
+
                 if (linesize > 0 && linesize < UPLINK_BUFSIZE) {
                     if (NULL != __my_read_cb) {
                         __my_read_cb(temp, linesize, portMAX_DELAY);
@@ -621,7 +618,7 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
 */
 ble_spp_relase_uplink_t setup_ble_spp() {
     esp_err_t ret;
-    __enable_tx_sem = xSemaphoreCreateBinary();
+    __enable_tx_sem = xSemaphoreCreateCounting(5, 0);
     MY_ASSERT_NOT(__enable_tx_sem, NULL);
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
 
@@ -682,5 +679,11 @@ void register_get_uplink_len_callback(ble_spp_get_txlen_t sizeofbuf_cb) {
 }
 
 static void __release_ble_uplink() {
-    MY_ASSERT_EQ(xSemaphoreGive(__enable_tx_sem), pdPASS);
+    if (__enable_tx_sem != NULL) {
+        MY_ASSERT_EQ(xSemaphoreGive(__enable_tx_sem), pdPASS);
+    }
+}
+
+bool ble_server_connected() {
+    return is_connected & enable_data_ntf;
 }

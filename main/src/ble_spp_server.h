@@ -61,3 +61,4 @@ typedef size_t (*ble_spp_get_txlen_t)(void);
 ble_spp_relase_uplink_t setup_ble_spp();
 void register_rw_callbacks(ble_spp_write_fun_t tx_cb, ble_spp_read_fun_t rx_cb);
 void register_get_uplink_len_callback(ble_spp_get_txlen_t sizeofbuf_cb);
+bool ble_server_connected();
