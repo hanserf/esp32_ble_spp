@@ -23,7 +23,7 @@
 #define SPP_CMD_MAX_LEN (20)
 #define SPP_STATUS_MAX_LEN (20)
 #define SPP_DATA_BUFF_MAX_LEN (2 * 1024)
-///Attributes State Machine
+/// Attributes State Machine
 enum {
     SPP_IDX_SVC,
 
@@ -51,8 +51,8 @@ enum {
 };
 
 #define SPP_ERROR_INIT (NULL)
-typedef void (*ble_spp_write_fun_t)(const char *src, size_t size);
-typedef void (*ble_spp_read_fun_t)(uint8_t *buf, uint32_t length, TickType_t timeout);
+typedef int (*ble_spp_write_fun_t)(const char *src, size_t size);
+typedef int (*ble_spp_read_fun_t)(uint8_t *buf, uint32_t length, TickType_t timeout);
 typedef void (*ble_spp_relase_uplink_t)();
 typedef void (*ble_spp_new_downlink_t)(size_t num_elements);
 

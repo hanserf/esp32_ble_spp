@@ -4,6 +4,8 @@
 #include <stdint.h>
 #define GETC_NO_BLOCK (false)
 #define GETC_BLOCK (true)
+#define CONSOLE_PRINT_SIZE (512)
+
 void console_ll_init();
 char console_ll_getc(bool block);
 void console_printf(const char *str, ...);

@@ -27,15 +27,13 @@
 #include <sys/param.h>
 #include <sys/unistd.h>
 
-static const char *VFS_MOUNTPOINT = "/link/0";
+static const char *VFS_MOUNTPOINT = "/data";
 static const char *TAG = "shell";
 static TaskHandle_t console_task;
-static int main_fd = -1;
 static void shell_init(void *ctxt);
 static int console_writefn(void *cookie, const char *data, int size);
 static int console_readfn(void *cookie, char *data, int size);
 static int console_openfn(const char *path, int flags, int mode);
-
 static ssize_t vfs_write(int fd, const void *data, size_t size);
 static ssize_t vfs_read(int fd, void *dst, size_t size);
 
@@ -71,41 +69,31 @@ static void initialize_nvs() {
     ESP_ERROR_CHECK(err);
 }
 
-//static int console_writefn(void *cookie, const char *data, int size) {
-//    (void)cookie;
-//    int rc = console_ll_putline(data, size);
-//    return rc;
-//}
-//
-//static int console_readfn(void *cookie, char *data, int size) {
-//    (void)cookie;
-//    int rc = console_ll_getline(data, size);
-//    return rc;
-//}
-
 static int console_writefn(void *cookie, const char *data, int size) {
-    int res = write(main_fd, data, size);
-    if (res == -1) {
-        /* Console connection closed */
-        return 0;
+    int rc = -1;
+    int put = 0;
+    const char *ptr = data;
+    (void)cookie;
+    if (size > 0) {
+        do {
+            put += console_ll_putline(ptr + put, size - put);
+        } while (put < size);
     }
-    return res;
+    return put;
 }
 static int console_readfn(void *cookie, char *data, int size) {
-    int res = read(main_fd, data, size);
-    if (res == -1) {
-        return 0;
+    (void)cookie;
+    int rc = -1;
+    if (size == -1) {
+        size = CONSOLE_PRINT_SIZE;
     }
-    return res;
+    if (data != NULL) {
+        rc = console_ll_getline(data, size);
+    }
+    return rc;
 }
 
-/*
-'ssize_t (*)(int,  void *, size_t)' { aka 'int (*)(int,  void *, unsigned int)' }
-
-'ssize_t (*)(void *, int,  void *, size_t)' {aka 'int (*)(void *, int,  void *, unsigned int)'}[-Wincompatible - pointer - types]
-*/
-static void
-initialize_console() {
+static void initialize_console() {
 
     stdout = fwopen(NULL, &console_writefn);
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -144,6 +132,13 @@ initialize_console() {
 
 void shell_driver_task(void *ctxt) {
     (void)ctxt;
+    /* Register our driver in with the VFS */
+    // myfs.flags = ESP_VFS_FLAG_DEFAULT; // Leave this to ESP_VFS_FLAG_DEFAULT if you don't need the context
+    // myfs.write = &vfs_write;
+    // myfs.read = &vfs_read;
+    // myfs.open = &console_openfn;
+    // ESP_ERROR_CHECK(esp_vfs_register(VFS_MOUNTPOINT, &myfs, NULL));
+
     while (true) {
         if (ble_server_connected()) {
             if (NULL == console_task) {
@@ -164,15 +159,6 @@ static void shell_init(void *ctxt) {
     ESP_LOGI(TAG, "Switch my console stdout and stdin to socket connection");
     vTaskDelay(pdMS_TO_TICKS(500));
     initialize_nvs();
-    /* Register our driver in with the VFS */
-    myfs.flags = ESP_VFS_FLAG_DEFAULT; // Leave this to ESP_VFS_FLAG_DEFAULT if you don't need the context
-    myfs.write = &vfs_write;
-    myfs.read = &vfs_read;
-    myfs.open = &console_openfn;
-
-    ESP_ERROR_CHECK(esp_vfs_register(VFS_MOUNTPOINT, &myfs, NULL));
-    main_fd = esp_vfs_open(__getreent(), VFS_MOUNTPOINT, myfs.flags, O_RDWR);
-    MY_ASSERT_NOT(main_fd, -1);
 
 #if CONFIG_STORE_HISTORY
     initialize_filesystem();
@@ -184,6 +170,12 @@ static void shell_init(void *ctxt) {
     esp_console_register_help_command();
     register_system();
     register_nvs();
+    /*__getreent() points to newlibs stdout, stdin and stderr*/
+    // int read_fd = esp_vfs_open(__getreent(), VFS_MOUNTPOINT, myfs.flags, O_RDONLY);
+    // int write_fd = esp_vfs_open(__getreent(), VFS_MOUNTPOINT, myfs.flags, O_WRONLY);
+    // MY_ASSERT_NOT(read_fd, -1);
+    // MY_ASSERT_NOT(write_fd, -1);
+
     /* Prompt to be printed before each line.
      * This can be customized, made dynamic, etc.
      */
@@ -195,6 +187,7 @@ static void shell_init(void *ctxt) {
            "Use UP/DOWN arrows to navigate through command history.\n"
            "Press TAB when typing command name to auto-complete.\n");
 
+    vTaskDelay(pdMS_TO_TICKS(250));
     /* Figure out if the terminal supports escape sequences */
     int probe_status = linenoiseProbe();
     if (probe_status) { /* zero indicates success */
@@ -208,15 +201,18 @@ static void shell_init(void *ctxt) {
          * don't use color codes in the prompt.
          */
         prompt = "esp32> ";
-#endif //CONFIG_LOG_COLORS
+#endif // CONFIG_LOG_COLORS
     }
+    // fprintf(fp, "%s: ", progname);
+    // fputs("too many errors to display", fp);
+    // fputc('\n', fp);
 
     /* Main loop */
     while (true) {
-        if (0 > main_fd) {
-            ESP_LOGW(TAG, "fd is %d, breaking console", main_fd);
-            break;
-        }
+        // if (0 > main_fd) {
+        //     ESP_LOGW(TAG, "fd is %d, breaking console", main_fd);
+        //     break;
+        // }
         /* Get a line using linenoise.
          * The line is returned when ENTER is pressed.
          */
@@ -249,36 +245,39 @@ static void shell_init(void *ctxt) {
     vTaskDelete(NULL);
     console_task = NULL;
 }
-
 static ssize_t vfs_write(int fd, const void *data, size_t size) {
-    ssize_t rc = fd;
+    int res = -1;
     if (fd > 0) {
-        rc = console_ll_putline(data, size);
+        res = console_ll_putline(data, size);
     }
-    return rc;
+    return res;
 }
 static ssize_t vfs_read(int fd, void *dst, size_t size) {
-    ssize_t rc = fd;
+    int res = -1;
     if (fd > 0) {
-        rc = console_ll_getline(dst, size);
+        res = console_ll_getline(dst, size);
     }
-    return rc;
+    return res;
 }
 
 static int console_openfn(const char *path, int flags, int mode) {
     // this is fairly primitive, we should check if file is opened read only,
     // and error out if write is requested
-    int fd = 1;
-    ESP_LOGI(TAG, "Custom vfs open @ %s", path);
-    //if (strcmp(path, "/0") == 0) {
-    //    fd = 0;
-    //} else if (strcmp(path, "/1") == 0) {
-    //    fd = 1;
-    //} else if (strcmp(path, "/2") == 0) {
-    //    fd = 2;
-    //} else {
-    //    errno = ENOENT;
-    //    return fd;
-    //}
+    int fd = -1;
+    switch (mode) {
+    case O_RDONLY:
+        fd = 1;
+        break;
+    case O_WRONLY:
+        fd = 2;
+        break;
+    case O_RDWR:
+        fd = 3;
+        break;
+    default:
+        errno = ENOENT;
+        break;
+    }
+    ESP_LOGI(TAG, "Custom vfs open @%s", path);
     return fd;
 }

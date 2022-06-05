@@ -21,7 +21,7 @@
 #include "string.h"
 
 #define GATTS_TABLE_TAG "GATTS_SPP_DEMO"
-#define BLE_SPP_DBG DEBUG_CONSOLE_INTERFACE
+#define BLE_SPP_DBG DEBUG_SPP_BT
 #define SPP_PROFILE_NUM 1
 #define SPP_PROFILE_APP_IDX 0
 #define ESP_SPP_APP_ID 0x56
@@ -142,88 +142,88 @@ static const uint8_t char_prop_read_write = ESP_GATT_CHAR_PROP_BIT_WRITE_NR | ES
 static const uint8_t char_prop_read_write_notify = ESP_GATT_CHAR_PROP_BIT_READ | ESP_GATT_CHAR_PROP_BIT_WRITE_NR | ESP_GATT_CHAR_PROP_BIT_NOTIFY;
 #endif
 
-///SPP Service - data receive characteristic, read&write without response
+/// SPP Service - data receive characteristic, read&write without response
 static const uint16_t spp_data_receive_uuid = ESP_GATT_UUID_SPP_DATA_RECEIVE;
 static const uint8_t spp_data_receive_val[20] = {0x00};
 
-///SPP Service - data notify characteristic, notify&read
+/// SPP Service - data notify characteristic, notify&read
 static const uint16_t spp_data_notify_uuid = ESP_GATT_UUID_SPP_DATA_NOTIFY;
 static const uint8_t spp_data_notify_val[20] = {0x00};
 static const uint8_t spp_data_notify_ccc[2] = {0x00, 0x00};
 
-///SPP Service - command characteristic, read&write without response
+/// SPP Service - command characteristic, read&write without response
 static const uint16_t spp_command_uuid = ESP_GATT_UUID_SPP_COMMAND_RECEIVE;
 static const uint8_t spp_command_val[10] = {0x00};
 
-///SPP Service - status characteristic, notify&read
+/// SPP Service - status characteristic, notify&read
 static const uint16_t spp_status_uuid = ESP_GATT_UUID_SPP_COMMAND_NOTIFY;
 static const uint8_t spp_status_val[10] = {0x00};
 static const uint8_t spp_status_ccc[2] = {0x00, 0x00};
 
 #ifdef SUPPORT_HEARTBEAT
-///SPP Server - Heart beat characteristic, notify&write&read
+/// SPP Server - Heart beat characteristic, notify&write&read
 static const uint16_t spp_heart_beat_uuid = ESP_GATT_UUID_SPP_HEARTBEAT;
 static const uint8_t spp_heart_beat_val[2] = {0x00, 0x00};
 static const uint8_t spp_heart_beat_ccc[2] = {0x00, 0x00};
 #endif
 
-///Full HRS Database Description - Used to add attributes into the database
+/// Full HRS Database Description - Used to add attributes into the database
 static const esp_gatts_attr_db_t spp_gatt_db[SPP_IDX_NB] =
     {
-        //SPP -  Service Declaration
+        // SPP -  Service Declaration
         [SPP_IDX_SVC] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&primary_service_uuid, ESP_GATT_PERM_READ, sizeof(spp_service_uuid), sizeof(spp_service_uuid), (uint8_t *)&spp_service_uuid}},
 
-        //SPP -  data receive characteristic Declaration
+        // SPP -  data receive characteristic Declaration
         [SPP_IDX_SPP_DATA_RECV_CHAR] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ, CHAR_DECLARATION_SIZE, CHAR_DECLARATION_SIZE, (uint8_t *)&char_prop_read_write}},
 
-        //SPP -  data receive characteristic Value
+        // SPP -  data receive characteristic Value
         [SPP_IDX_SPP_DATA_RECV_VAL] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&spp_data_receive_uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE, SPP_DATA_MAX_LEN, sizeof(spp_data_receive_val), (uint8_t *)spp_data_receive_val}},
 
-        //SPP -  data notify characteristic Declaration
+        // SPP -  data notify characteristic Declaration
         [SPP_IDX_SPP_DATA_NOTIFY_CHAR] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ, CHAR_DECLARATION_SIZE, CHAR_DECLARATION_SIZE, (uint8_t *)&char_prop_read_notify}},
 
-        //SPP -  data notify characteristic Value
+        // SPP -  data notify characteristic Value
         [SPP_IDX_SPP_DATA_NTY_VAL] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&spp_data_notify_uuid, ESP_GATT_PERM_READ, SPP_DATA_MAX_LEN, sizeof(spp_data_notify_val), (uint8_t *)spp_data_notify_val}},
 
-        //SPP -  data notify characteristic - Client Characteristic Configuration Descriptor
+        // SPP -  data notify characteristic - Client Characteristic Configuration Descriptor
         [SPP_IDX_SPP_DATA_NTF_CFG] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_client_config_uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE, sizeof(uint16_t), sizeof(spp_data_notify_ccc), (uint8_t *)spp_data_notify_ccc}},
 
-        //SPP -  command characteristic Declaration
+        // SPP -  command characteristic Declaration
         [SPP_IDX_SPP_COMMAND_CHAR] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ, CHAR_DECLARATION_SIZE, CHAR_DECLARATION_SIZE, (uint8_t *)&char_prop_read_write}},
 
-        //SPP -  command characteristic Value
+        // SPP -  command characteristic Value
         [SPP_IDX_SPP_COMMAND_VAL] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&spp_command_uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE, SPP_CMD_MAX_LEN, sizeof(spp_command_val), (uint8_t *)spp_command_val}},
 
-        //SPP -  status characteristic Declaration
+        // SPP -  status characteristic Declaration
         [SPP_IDX_SPP_STATUS_CHAR] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ, CHAR_DECLARATION_SIZE, CHAR_DECLARATION_SIZE, (uint8_t *)&char_prop_read_notify}},
 
-        //SPP -  status characteristic Value
+        // SPP -  status characteristic Value
         [SPP_IDX_SPP_STATUS_VAL] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&spp_status_uuid, ESP_GATT_PERM_READ, SPP_STATUS_MAX_LEN, sizeof(spp_status_val), (uint8_t *)spp_status_val}},
 
-        //SPP -  status characteristic - Client Characteristic Configuration Descriptor
+        // SPP -  status characteristic - Client Characteristic Configuration Descriptor
         [SPP_IDX_SPP_STATUS_CFG] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_client_config_uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE, sizeof(uint16_t), sizeof(spp_status_ccc), (uint8_t *)spp_status_ccc}},
 
 #ifdef SUPPORT_HEARTBEAT
-        //SPP -  Heart beat characteristic Declaration
+        // SPP -  Heart beat characteristic Declaration
         [SPP_IDX_SPP_HEARTBEAT_CHAR] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_declaration_uuid, ESP_GATT_PERM_READ, CHAR_DECLARATION_SIZE, CHAR_DECLARATION_SIZE, (uint8_t *)&char_prop_read_write_notify}},
 
-        //SPP -  Heart beat characteristic Value
+        // SPP -  Heart beat characteristic Value
         [SPP_IDX_SPP_HEARTBEAT_VAL] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&spp_heart_beat_uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE, sizeof(spp_heart_beat_val), sizeof(spp_heart_beat_val), (uint8_t *)spp_heart_beat_val}},
 
-        //SPP -  Heart beat characteristic - Client Characteristic Configuration Descriptor
+        // SPP -  Heart beat characteristic - Client Characteristic Configuration Descriptor
         [SPP_IDX_SPP_HEARTBEAT_CFG] =
             {{ESP_GATT_AUTO_RSP}, {ESP_UUID_LEN_16, (uint8_t *)&character_client_config_uuid, ESP_GATT_PERM_READ | ESP_GATT_PERM_WRITE, sizeof(uint16_t), sizeof(spp_data_notify_ccc), (uint8_t *)spp_heart_beat_ccc}},
 #endif
@@ -295,72 +295,68 @@ static void print_write_buffer(void) {
 
 void link_task(void *pvParameters) {
 
-    size_t linesize;
     uint8_t total_num = 0;
     uint8_t current_num = 0;
     uint8_t temp[UPLINK_BUFSIZE];
 
     for (;;) {
-        //Waiting for UART event.
-        if ((xSemaphoreTake(__enable_tx_sem, portMAX_DELAY) == pdPASS) && enable_data_ntf) {
-            if (is_connected) {
-                memset(temp, 0, UPLINK_BUFSIZE);
-                linesize = (__my_get_uplink_len_cb != NULL) ? (__my_get_uplink_len_cb()) : 0;
-#if (BLE_SPP_DBG == 1)
-                ESP_LOGI(GATTS_TABLE_TAG, "Linesize :%d", linesize);
-#endif
-                uint8_t *ntf_value_p = NULL;
+        // Waiting for UART event.
+        int linesize = 0;
+        if (is_connected && enable_data_ntf) {
+            memset(temp, 0, UPLINK_BUFSIZE);
+            uint8_t *ntf_value_p = NULL;
 #ifdef SUPPORT_HEARTBEAT
-                if (!enable_heart_ntf) {
-                    ESP_LOGE(GATTS_TABLE_TAG, "%s do not enable heartbeat Notify\n", __func__);
-                    break;
-                }
+            if (!enable_heart_ntf) {
+                ESP_LOGE(GATTS_TABLE_TAG, "%s do not enable heartbeat Notify\n", __func__);
+                break;
+            }
 #endif
-
-                if (linesize > 0 && linesize < UPLINK_BUFSIZE) {
-                    if (NULL != __my_read_cb) {
-                        __my_read_cb(temp, linesize, portMAX_DELAY);
+            if (NULL != __my_read_cb) {
+                linesize = __my_read_cb(temp, UPLINK_BUFSIZE, 1000);
+            }
 #if (BLE_SPP_DBG == 1)
-                        ESP_LOGI(GATTS_TABLE_TAG, "TX :%s", temp);
+            ESP_LOGI(GATTS_TABLE_TAG, "TXUP\t%d:[%s]", linesize, temp);
 #endif
+            if (linesize > 0 && linesize <= UPLINK_BUFSIZE) {
+
+                if (linesize <= (spp_mtu_size - 3)) {
+                    esp_ble_gatts_send_indicate(spp_gatts_if, spp_conn_id, spp_handle_table[SPP_IDX_SPP_DATA_NTY_VAL], linesize, temp, false);
+                } else if (linesize > (spp_mtu_size - 3)) {
+                    if ((linesize % (spp_mtu_size - 7)) == 0) {
+                        total_num = linesize / (spp_mtu_size - 7);
+                    } else {
+                        total_num = linesize / (spp_mtu_size - 7) + 1;
                     }
-                    if (linesize <= (spp_mtu_size - 3)) {
-                        esp_ble_gatts_send_indicate(spp_gatts_if, spp_conn_id, spp_handle_table[SPP_IDX_SPP_DATA_NTY_VAL], linesize, temp, false);
-                    } else if (linesize > (spp_mtu_size - 3)) {
-                        if ((linesize % (spp_mtu_size - 7)) == 0) {
-                            total_num = linesize / (spp_mtu_size - 7);
-                        } else {
-                            total_num = linesize / (spp_mtu_size - 7) + 1;
-                        }
-                        current_num = 1;
-                        ntf_value_p = (uint8_t *)malloc((spp_mtu_size - 3) * sizeof(uint8_t));
-                        if (ntf_value_p == NULL) {
-                            ESP_LOGE(GATTS_TABLE_TAG, "%s malloc.2 failed\n", __func__);
-                            break;
-                        }
-                        while (current_num <= total_num) {
-                            if (current_num < total_num) {
-                                ntf_value_p[0] = '#';
-                                ntf_value_p[1] = '#';
-                                ntf_value_p[2] = total_num;
-                                ntf_value_p[3] = current_num;
-                                memcpy(ntf_value_p + 4, temp + (current_num - 1) * (spp_mtu_size - 7), (spp_mtu_size - 7));
-                                esp_ble_gatts_send_indicate(spp_gatts_if, spp_conn_id, spp_handle_table[SPP_IDX_SPP_DATA_NTY_VAL], (spp_mtu_size - 3), ntf_value_p, false);
-                            } else if (current_num == total_num) {
-                                ntf_value_p[0] = '#';
-                                ntf_value_p[1] = '#';
-                                ntf_value_p[2] = total_num;
-                                ntf_value_p[3] = current_num;
-                                memcpy(ntf_value_p + 4, temp + (current_num - 1) * (spp_mtu_size - 7), (linesize - (current_num - 1) * (spp_mtu_size - 7)));
-                                esp_ble_gatts_send_indicate(spp_gatts_if, spp_conn_id, spp_handle_table[SPP_IDX_SPP_DATA_NTY_VAL], (linesize - (current_num - 1) * (spp_mtu_size - 7) + 4), ntf_value_p, false);
-                            }
-                            vTaskDelay(20 / portTICK_PERIOD_MS);
-                            current_num++;
-                        }
-                        free(ntf_value_p);
+                    current_num = 1;
+                    ntf_value_p = (uint8_t *)malloc((spp_mtu_size - 3) * sizeof(uint8_t));
+                    if (ntf_value_p == NULL) {
+                        ESP_LOGE(GATTS_TABLE_TAG, "%s malloc.2 failed\n", __func__);
+                        break;
                     }
+                    while (current_num <= total_num) {
+                        if (current_num < total_num) {
+                            ntf_value_p[0] = '#';
+                            ntf_value_p[1] = '#';
+                            ntf_value_p[2] = total_num;
+                            ntf_value_p[3] = current_num;
+                            memcpy(ntf_value_p + 4, temp + (current_num - 1) * (spp_mtu_size - 7), (spp_mtu_size - 7));
+                            esp_ble_gatts_send_indicate(spp_gatts_if, spp_conn_id, spp_handle_table[SPP_IDX_SPP_DATA_NTY_VAL], (spp_mtu_size - 3), ntf_value_p, false);
+                        } else if (current_num == total_num) {
+                            ntf_value_p[0] = '#';
+                            ntf_value_p[1] = '#';
+                            ntf_value_p[2] = total_num;
+                            ntf_value_p[3] = current_num;
+                            memcpy(ntf_value_p + 4, temp + (current_num - 1) * (spp_mtu_size - 7), (linesize - (current_num - 1) * (spp_mtu_size - 7)));
+                            esp_ble_gatts_send_indicate(spp_gatts_if, spp_conn_id, spp_handle_table[SPP_IDX_SPP_DATA_NTY_VAL], (linesize - (current_num - 1) * (spp_mtu_size - 7) + 4), ntf_value_p, false);
+                        }
+                        vTaskDelay(20 / portTICK_PERIOD_MS);
+                        current_num++;
+                    }
+                    free(ntf_value_p);
                 }
             }
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(50));
         }
     }
     ESP_LOGW(GATTS_TABLE_TAG, "Killing BT link task");
@@ -393,12 +389,13 @@ void spp_heartbeat_task(void *arg) {
 #endif
 
 void spp_cmd_task(void *arg) {
+    /*Write Characteristics 0000abf3-0000-1000-8000-00805f9b34fb */
     uint8_t *cmd_id;
-
     for (;;) {
         vTaskDelay(50 / portTICK_PERIOD_MS);
         if (xQueueReceive(cmd_cmd_queue, &cmd_id, portMAX_DELAY)) {
-            esp_log_buffer_char(GATTS_TABLE_TAG, (char *)(cmd_id), strlen((char *)cmd_id));
+            esp_log_buffer_hex(GATTS_TABLE_TAG, (char *)(cmd_id), strlen((char *)cmd_id));
+            __my_write_cb((char *)cmd_id, strlen((char *)cmd_id));
             free(cmd_id);
         }
     }
@@ -426,7 +423,7 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
         esp_ble_gap_start_advertising(&spp_adv_params);
         break;
     case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
-        //advertising start complete event to indicate advertising start successfully or failed
+        // advertising start complete event to indicate advertising start successfully or failed
         if ((err = param->adv_start_cmpl.status) != ESP_BT_STATUS_SUCCESS) {
             ESP_LOGE(GATTS_TABLE_TAG, "Advertising start failed: %s\n", esp_err_to_name(err));
         }
@@ -439,6 +436,7 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
 static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t *param) {
     esp_ble_gatts_cb_param_t *p_data = (esp_ble_gatts_cb_param_t *)param;
     uint8_t res = 0xff;
+    int ble_uplink_len = 0;
 #if (BLE_SPP_DBG == 1)
     ESP_LOGI(GATTS_TABLE_TAG, "event = %x\n", event);
 #endif
@@ -456,7 +454,7 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
     case ESP_GATTS_READ_EVT:
         res = find_char_and_desr_index(p_data->read.handle);
         if (res == SPP_IDX_SPP_STATUS_VAL) {
-            //TODO:client read the status characteristic
+            // TODO:client read the status characteristic
         }
         break;
     case ESP_GATTS_WRITE_EVT: {
@@ -500,15 +498,18 @@ static void gatts_profile_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_
                 esp_log_buffer_char(GATTS_TABLE_TAG, (char *)(p_data->write.value), p_data->write.len);
 #else
                 if (NULL != __my_write_cb) {
-                    __my_write_cb((char *)(p_data->write.value), (size_t)p_data->write.len);
+                    /*Write Characteristics 0000abf1-0000-1000-8000-00805f9b34fb */
+
+                    ble_uplink_len = __my_write_cb((char *)(p_data->write.value), (size_t)p_data->write.len);
 /*My write cb will append termination character after newline*/
 #if (BLE_SPP_DBG == 1)
-                    ESP_LOGI(GATTS_TABLE_TAG, "spp len %d:%s", p_data->write.len, p_data->write.value);
+                    esp_log_buffer_hex(GATTS_TABLE_TAG, (char *)p_data->write.value, (size_t)p_data->write.len);
+//                    ESP_LOGI(GATTS_TABLE_TAG, "spp\tl:%d\t[%s]", ble_uplink_len, p_data->write.value);
 #endif
                 }
 #endif
             } else {
-                //TODO:
+                // TODO:
             }
         } else if ((p_data->write.is_prep == true) && (res == SPP_IDX_SPP_DATA_RECV_VAL)) {
 #if (BLE_SPP_DBG == 1)
@@ -614,11 +615,11 @@ static void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_
 }
 /*This functions returns a pointer to a static function declared within this source file
   the static function relases the uplink. This function will act as a "Flow control" Releasing transmission of current uplink buffer.
-  It will here be used when detecting a tx escape character. 
+  It will here be used when detecting a tx escape character.
 */
 ble_spp_relase_uplink_t setup_ble_spp() {
     esp_err_t ret;
-    __enable_tx_sem = xSemaphoreCreateCounting(5, 0);
+    __enable_tx_sem = xSemaphoreCreateBinary();
     MY_ASSERT_NOT(__enable_tx_sem, NULL);
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
 
@@ -679,9 +680,12 @@ void register_get_uplink_len_callback(ble_spp_get_txlen_t sizeofbuf_cb) {
 }
 
 static void __release_ble_uplink() {
+#if 0
     if (__enable_tx_sem != NULL) {
-        MY_ASSERT_EQ(xSemaphoreGive(__enable_tx_sem), pdPASS);
+        // MY_ASSERT_EQ(xSemaphoreGive(__enable_tx_sem), pdPASS);
+        xSemaphoreGive(__enable_tx_sem);
     }
+#endif
 }
 
 bool ble_server_connected() {
